@@ -12,11 +12,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <title>Prayer & Iqama — Lusail</title>
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body>
-  <!-- Real media element in the DOM — more reliable than JS-only Audio() on some browsers -->
+  <!-- HTMLAudio — reliable on Android (Web Audio / speechSynthesis often silent) -->
   <audio id="adhan-player" src="audio/adhan.mp3?v=3" preload="auto" playsinline></audio>
+  <audio id="iqama-warning-player" src="audio/iqama-5-minutes.wav?v=1" preload="auto" playsinline></audio>
+  <audio id="iqama-player" src="audio/iqama.wav?v=1" preload="auto" playsinline></audio>
 
   <div id="audio-status" class="audio-status" hidden role="status" aria-live="polite"></div>
 
@@ -247,7 +249,7 @@
 
   <div id="panel-backdrop" class="panel-backdrop" hidden></div>
 
-  <script src="prayer-data.js?v=9"></script>
-  <script src="script.js?v=9"></script>
+  <script src="prayer-data.js?v=10"></script>
+  <script src="script.js?v=10"></script>
 </body>
 </html>

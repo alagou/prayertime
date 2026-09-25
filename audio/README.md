@@ -1,16 +1,14 @@
 # Audio
 
 ## Adhan
-`adhan.mp3` — downloaded from IslamCan:
-https://www.islamcan.com/audio/adhan/azan2.mp3
+`adhan.mp3` — IslamCan azan2 recording.
 
-Replace this file anytime; keep the same name or update `AUDIO_PATHS.adhan` in `prayer-data.js`.
+## Iqama alerts (required for Android)
+These play via HTML `<audio>` (same mechanism as Adhan), because Web Audio tones and speech synthesis are often **silent on Android**:
 
-## Iqama alerts
-Iqama warnings and Iqama-time announcements are **generated in the browser**:
-- Loud alert chimes (repeated)
-- Artificial speech, for example:
-  - “Iqama starts after 5 minutes for Asr prayer. You should go now.”
-  - “It is time for Iqama for Asr prayer.”
+| File | When |
+|------|------|
+| `iqama-5-minutes.wav` | 5 minutes before Iqama |
+| `iqama.wav` | At Iqama time |
 
-No separate iqama MP3 is required. Optional custom files can be added later via `AUDIO_PATHS`.
+Replace them with your own recordings if you want spoken voice files; keep the same filenames or update `AUDIO_PATHS` in `prayer-data.js`.

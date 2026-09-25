@@ -100,8 +100,12 @@
   let iqamaHoldUntil = 0;
 
   const audio = {
-    // Prefer DOM <audio> when present — more reliable on Windows Chrome/Edge
+    // HTMLAudioElement — reliable on Android (same path as working Adhan)
     adhan: document.getElementById('adhan-player') || new Audio(AUDIO_PATHS.adhan),
+    iqamaWarning:
+      document.getElementById('iqama-warning-player') ||
+      new Audio(AUDIO_PATHS.iqamaWarning),
+    iqama: document.getElementById('iqama-player') || new Audio(AUDIO_PATHS.iqama),
   };
 
   /** @type {AudioContext | null} */
@@ -115,9 +119,14 @@
 
   let audioStatusTimer = 0;
 
-  audio.adhan.preload = 'auto';
-  audio.adhan.setAttribute?.('playsinline', '');
-  audio.adhan.playsInline = true;
+  const isAndroid = /Android/i.test(navigator.userAgent || '');
+
+  Object.values(audio).forEach((el) => {
+    if (!el) return;
+    el.preload = 'auto';
+    el.setAttribute?.('playsinline', '');
+    el.playsInline = true;
+  });
 
   // ============================================================
   // Time helpers — always Asia/Qatar
@@ -381,7 +390,11 @@
 
   function applyVolume() {
     const v = Math.max(0, Math.min(1, (settings.volume ?? 80) / 100));
+    // Iqama alerts stay louder so they cut through on tablet speakers
+    const alertVol = Math.min(1, Math.max(v, 0.85));
     audio.adhan.volume = v;
+    if (audio.iqamaWarning) audio.iqamaWarning.volume = alertVol;
+    if (audio.iqama) audio.iqama.volume = alertVol;
   }
 
   async function ensureAudioContext() {
@@ -400,12 +413,15 @@
 
   function stopAllClips() {
     announcementToken += 1;
-    try {
-      audio.adhan.pause();
-      if (audio.adhan.currentTime) audio.adhan.currentTime = 0;
-    } catch {
-      /* ignore */
-    }
+    Object.values(audio).forEach((el) => {
+      if (!el) return;
+      try {
+        el.pause();
+        if (el.currentTime) el.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+    });
     activeSources.forEach((src) => {
       try {
         src.stop();
@@ -421,6 +437,39 @@
         /* ignore */
       }
     }
+  }
+
+  /** Play an HTMLAudio clip once; resolves when ended or on error. */
+  function playHtmlClipOnce(el) {
+    return new Promise(async (resolve) => {
+      if (!el) {
+        resolve(false);
+        return;
+      }
+      applyVolume();
+      const finish = (ok) => {
+        el.removeEventListener('ended', onEnded);
+        el.removeEventListener('error', onError);
+        resolve(ok);
+      };
+      const onEnded = () => finish(true);
+      const onError = () => finish(false);
+      el.addEventListener('ended', onEnded, { once: true });
+      el.addEventListener('error', onError, { once: true });
+      try {
+        el.pause();
+        if (el.readyState >= 1) el.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+      try {
+        const p = el.play();
+        if (p) await p;
+      } catch (err) {
+        console.warn('HTMLAudio play failed:', err.message);
+        finish(false);
+      }
+    });
   }
 
   /** Very loud alert chime for 5-min warning / Iqama (hard to miss across a room). */
@@ -570,28 +619,14 @@
   }
 
   /**
-   * Hearable, repeatable voice announcement with loud alert tones.
+   * Iqama alerts — HTMLAudio files first (Android-reliable, same as Adhan).
+   * SpeechSynthesis is optional bonus on desktop; skipped on Android (usually silent).
    */
   async function announceVoice(type, prayerName = 'Asr') {
     const token = ++announcementToken;
     const name = prayerName || 'the next';
-    await ensureAudioContext();
-
-    const lines =
-      type === 'warning'
-        ? [
-            `Attention! Iqama starts after 5 minutes for ${name} prayer.`,
-            'You should go now.',
-            `Please go to prayer. Iqama in 5 minutes for ${name}.`,
-          ]
-        : [
-            `Attention! It is time for Iqama for ${name} prayer.`,
-            `Please stand for ${name} prayer. Iqama begins now.`,
-            `Iqama time for ${name}. Please stand.`,
-          ];
-
-    const repeats = type === 'warning' ? 3 : 3;
-    const chimeStyle = type === 'warning' ? 'warning' : 'iqama';
+    const clip = type === 'warning' ? audio.iqamaWarning : audio.iqama;
+    const loops = type === 'warning' ? 4 : 5;
 
     showAlarmBanner(type === 'warning' ? 'warning' : 'iqama', name);
     showAudioStatus(
@@ -600,31 +635,49 @@
         : `Alert: Iqama time for ${name}…`
     );
 
-    // Opening double blast — very noticeable
-    if (token === announcementToken) {
-      await playAlertChime(chimeStyle);
-      await playAlertChime(chimeStyle);
+    applyVolume();
+
+    // Primary path: play the WAV file repeatedly (works on Android Chrome)
+    let playedFile = false;
+    for (let i = 0; i < loops; i += 1) {
+      if (token !== announcementToken) return;
+      const ok = await playHtmlClipOnce(clip);
+      if (ok) playedFile = true;
+      else break;
+      // Brief gap between loops
+      if (token === announcementToken && i < loops - 1) await delay(250);
     }
 
-    for (let round = 0; round < repeats; round += 1) {
-      if (token !== announcementToken) return;
-      await playAlertChime(chimeStyle);
-      if (token !== announcementToken) return;
+    // Desktop bonus: spoken lines (Android TTS is often silent / hangs)
+    if (!isAndroid && token === announcementToken) {
+      const lines =
+        type === 'warning'
+          ? [
+              `Attention! Iqama starts after 5 minutes for ${name} prayer.`,
+              'You should go now.',
+            ]
+          : [
+              `Attention! It is time for Iqama for ${name} prayer.`,
+              `Please stand for ${name} prayer.`,
+            ];
       for (const line of lines) {
         if (token !== announcementToken) return;
-        const ok = await speakOnce(line);
-        await playAlertPunch();
-        if (!ok) await playAlertChime(chimeStyle);
+        await speakOnce(line);
       }
-      if (round < repeats - 1) await delay(200);
     }
-    if (token === announcementToken) {
-      await playAlertChime(chimeStyle);
-      await playAlertChime(chimeStyle);
+
+    // Fallback if HTML audio failed: try Web Audio chimes
+    if (!playedFile && token === announcementToken) {
+      console.warn('Iqama HTML audio failed; falling back to Web Audio tones');
+      const chimeStyle = type === 'warning' ? 'warning' : 'iqama';
+      for (let i = 0; i < 3; i += 1) {
+        if (token !== announcementToken) return;
+        await playAlertChime(chimeStyle);
+      }
     }
-    // Announcement finished naturally — keep banner until user stops, or auto-hide shortly
+
     if (token === announcementToken) {
-      await delay(2500);
+      await delay(2000);
       if (token === announcementToken) hideAlarmBanner();
     }
   }
@@ -698,8 +751,24 @@
       }
     }
 
-    // Warm speech engine with a silent utterance (Chrome Windows)
-    if ('speechSynthesis' in window) {
+    // Unlock ALL HTML audio elements (needed on Android for later timer-fired plays)
+    await Promise.all(
+      Object.values(audio).map(async (el) => {
+        if (!el) return;
+        try {
+          el.muted = true;
+          await el.play();
+          el.pause();
+          el.currentTime = 0;
+          el.muted = false;
+        } catch {
+          el.muted = false;
+        }
+      })
+    );
+
+    // Warm speech engine with a silent utterance (desktop; often unused on Android)
+    if ('speechSynthesis' in window && !isAndroid) {
       try {
         window.speechSynthesis.getVoices();
         const warm = new SpeechSynthesisUtterance(' ');

@@ -5,8 +5,8 @@ Desktop.ini
 .vscode/
 .idea/
 
-# Placeholder tone WAVs (Adhan MP3 is kept)
-audio/*.wav
+# Old placeholder Adhan WAV only (keep iqama WAVs for Android playback)
+audio/adhan.wav
 
 # Large raw API dump (re-fetch with tools/fetch-lusail-prayers.py)
 prayer-cache/aladhan-raw-2026.json
