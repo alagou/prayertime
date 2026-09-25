@@ -1,0 +1,12 @@
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Placeholder tone WAVs (Adhan MP3 is kept)
+audio/*.wav
+
+# Large raw API dump (re-fetch with tools/fetch-lusail-prayers.py)
+prayer-cache/aladhan-raw-2026.json
