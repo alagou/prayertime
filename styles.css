@@ -384,10 +384,12 @@ body {
   margin: 0;
 }
 
-.footer .app-version {
-  margin-top: 0.35rem;
+.app-version {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
   font-weight: 600;
-  color: rgba(232, 213, 163, 0.8);
+  letter-spacing: 0.04em;
+  color: rgba(232, 213, 163, 0.85);
 }
 
 /* —— Overlay —— */

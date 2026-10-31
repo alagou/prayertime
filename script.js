@@ -10,7 +10,7 @@
   'use strict';
 
   /** Shown in the footer; bump on every release (together with the ?v= query in index.html). */
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.3.1';
   const APP_BUILD_DATE = '2026-10-31';
 
   // —— Storage keys ——
