@@ -86,12 +86,16 @@
     alarmPrayer: $('alarm-prayer'),
     alarmDetail: $('alarm-detail'),
     btnStopAlarm: $('btn-stop-alarm'),
+    btnPlayAlarm: $('btn-play-alarm'),
   };
 
   // —— State ——
   let settings = loadSettings();
   let alertsUnlocked = localStorage.getItem(STORAGE.alertsEnabled) === 'true';
   let audioReady = false;
+  let unlockPromise = null;
+  /** Alert whose sound was blocked by autoplay rules; replayed from the banner button. */
+  let blockedAlarm = null;
 
   /** @type {{ active: boolean, baseRealMs: number, simulatedMs: number, label: string } | null} */
   let testMode = null;
@@ -372,12 +376,28 @@
         : 'It is time for Iqama. Please stand for prayer.';
     }
 
+    blockedAlarm = null;
+    if (els.btnPlayAlarm) els.btnPlayAlarm.hidden = true;
     banner.hidden = false;
     // Focus stop button for keyboard / accessibility
     requestAnimationFrame(() => els.btnStopAlarm?.focus());
   }
 
+  /** Keep the banner up and offer a tap-to-play button when the browser blocked sound. */
+  function showSoundBlocked(type, prayerName) {
+    blockedAlarm = { type, prayerName };
+    els.alarmDetail.textContent =
+      'The browser blocked the sound because the screen has not been tapped since the page loaded. Tap “Play Sound”.';
+    if (els.btnPlayAlarm) {
+      els.btnPlayAlarm.hidden = false;
+      requestAnimationFrame(() => els.btnPlayAlarm.focus());
+    }
+    showAudioStatus('Sound blocked — tap the screen to enable audio', 'error');
+  }
+
   function hideAlarmBanner() {
+    blockedAlarm = null;
+    if (els.btnPlayAlarm) els.btnPlayAlarm.hidden = true;
     if (els.alarmBanner) els.alarmBanner.hidden = true;
   }
 
@@ -439,21 +459,25 @@
     }
   }
 
-  /** Play an HTMLAudio clip once; resolves when ended or on error. */
+  /**
+   * Play an HTMLAudio clip once.
+   * @returns {Promise<'ok'|'blocked'|'error'>} 'blocked' = autoplay policy refused play()
+   */
   function playHtmlClipOnce(el) {
     return new Promise(async (resolve) => {
       if (!el) {
-        resolve(false);
+        resolve('error');
         return;
       }
       applyVolume();
-      const finish = (ok) => {
+      el.muted = false;
+      const finish = (result) => {
         el.removeEventListener('ended', onEnded);
         el.removeEventListener('error', onError);
-        resolve(ok);
+        resolve(result);
       };
-      const onEnded = () => finish(true);
-      const onError = () => finish(false);
+      const onEnded = () => finish('ok');
+      const onError = () => finish('error');
       el.addEventListener('ended', onEnded, { once: true });
       el.addEventListener('error', onError, { once: true });
       try {
@@ -467,7 +491,7 @@
         if (p) await p;
       } catch (err) {
         console.warn('HTMLAudio play failed:', err.message);
-        finish(false);
+        finish(err.name === 'NotAllowedError' ? 'blocked' : 'error');
       }
     });
   }
@@ -641,8 +665,12 @@
     let playedFile = false;
     for (let i = 0; i < loops; i += 1) {
       if (token !== announcementToken) return;
-      const ok = await playHtmlClipOnce(clip);
-      if (ok) playedFile = true;
+      const result = await playHtmlClipOnce(clip);
+      if (result === 'blocked' && !playedFile) {
+        showSoundBlocked(type === 'warning' ? 'warning' : 'iqama', name);
+        return;
+      }
+      if (result === 'ok') playedFile = true;
       else break;
       // Brief gap between loops
       if (token === announcementToken && i < loops - 1) await delay(250);
@@ -725,7 +753,11 @@
       return true;
     } catch (err) {
       console.warn('Adhan HTMLAudio play failed:', err);
-      showAudioStatus(`Adhan blocked: ${err.message}. Playing alert tone instead.`, 'error');
+      if (err.name === 'NotAllowedError') {
+        showSoundBlocked('adhan', prayerName);
+        return false;
+      }
+      showAudioStatus(`Adhan error: ${err.message}. Playing alert tone instead.`, 'error');
       await playAlertChime('warning');
       await playAlertChime('iqama');
       return false;
@@ -736,7 +768,17 @@
    * Unlock audio on a user gesture. Keep this FAST — do not await long loads
    * before calling play(), or the browser will revoke the gesture.
    */
-  async function unlockAudio() {
+  function unlockAudio() {
+    if (!unlockPromise) {
+      unlockPromise = doUnlockAudio().catch((err) => {
+        unlockPromise = null;
+        throw err;
+      });
+    }
+    return unlockPromise;
+  }
+
+  async function doUnlockAudio() {
     applyVolume();
     const ctx = await ensureAudioContext();
     if (ctx) {
@@ -751,17 +793,24 @@
       }
     }
 
-    // Unlock ALL HTML audio elements (needed on Android for later timer-fired plays)
+    // Unlock ALL HTML audio elements (needed on Android for later timer-fired plays).
+    // Real alerts unmute the element before play(), so a clip that is unmuted by the
+    // time the muted play resolves has been taken over and must not be paused.
+    let unlockedAny = false;
     await Promise.all(
       Object.values(audio).map(async (el) => {
-        if (!el) return;
+        if (!el || !el.paused) return;
         try {
           el.muted = true;
           await el.play();
-          el.pause();
-          el.currentTime = 0;
-          el.muted = false;
+          unlockedAny = true;
+          if (el.muted) {
+            el.pause();
+            el.currentTime = 0;
+          }
         } catch {
+          /* still locked */
+        } finally {
           el.muted = false;
         }
       })
@@ -781,6 +830,9 @@
       }
     }
 
+    if (!unlockedAny && Object.values(audio).every((el) => !el || el.paused)) {
+      throw new Error('Audio still locked');
+    }
     audioReady = true;
     localStorage.setItem(STORAGE.alertsEnabled, 'true');
   }
@@ -791,7 +843,6 @@
    */
   async function playSound(which, prayerName = 'Asr') {
     const isTest = which.startsWith('test-');
-    if (!audioReady && !isTest) return;
 
     const kind =
       which === 'adhan' || which === 'test-adhan'
@@ -1199,9 +1250,15 @@
     'exact-iqama': { label: 'Exact Iqama', offsetFromIqamaMs: 0 },
   };
 
-  function startTestScenario(scenarioId) {
+  async function startTestScenario(scenarioId) {
     const scenario = SCENARIOS[scenarioId];
     if (!scenario) return;
+
+    try {
+      await unlockAudio();
+    } catch (err) {
+      console.warn('Audio unlock failed:', err.message);
+    }
 
     const prayerName = els.testPrayer.value;
     const current = new Date(); // use real date for which day's schedule
@@ -1253,29 +1310,41 @@
   // ============================================================
 
   async function enableAlerts(withSound) {
-    if (withSound) {
-      await unlockAudio();
-      await requestNotificationPermission();
-      localStorage.setItem(STORAGE.alertsEnabled, 'true');
-      alertsUnlocked = true;
-    } else {
-      localStorage.setItem(STORAGE.alertsEnabled, 'skipped');
-      alertsUnlocked = false;
-    }
     els.enableOverlay.hidden = true;
+    if (!withSound) return;
+    try {
+      await unlockAudio();
+    } catch (err) {
+      console.warn('Audio unlock failed:', err.message);
+    }
+    await requestNotificationPermission();
+    localStorage.setItem(STORAGE.alertsEnabled, 'true');
+    alertsUnlocked = true;
   }
 
+  /** Audio must be unlocked by a tap after every page load, so always ask. */
   function showEnableOverlayIfNeeded() {
     const flag = localStorage.getItem(STORAGE.alertsEnabled);
     if (flag === 'true') {
-      // Still need a gesture to unlock audio in many browsers after refresh
-      els.enableOverlay.hidden = false;
       els.btnEnable.textContent = 'Tap to Resume Sound & Alerts';
-    } else if (flag === 'skipped') {
-      els.enableOverlay.hidden = true;
-    } else {
-      els.enableOverlay.hidden = false;
     }
+    els.enableOverlay.hidden = false;
+  }
+
+  /** Any tap/key on the page counts as the gesture browsers require for audio. */
+  function bindGlobalAudioUnlock() {
+    const onGesture = () => {
+      if (audioReady) {
+        ['click', 'touchend', 'keydown'].forEach((t) =>
+          document.removeEventListener(t, onGesture, true)
+        );
+        return;
+      }
+      unlockAudio().catch(() => {});
+    };
+    ['click', 'touchend', 'keydown'].forEach((t) =>
+      document.addEventListener(t, onGesture, true)
+    );
   }
 
   // ============================================================
@@ -1338,7 +1407,6 @@
     els.btnTestAdhan.addEventListener('click', async (ev) => {
       ev.preventDefault();
       try {
-        audioReady = true;
         await ensureAudioContext();
         applyVolume();
         stopAllClips();
@@ -1358,7 +1426,6 @@
     els.btnTestWarning.addEventListener('click', async (ev) => {
       ev.preventDefault();
       try {
-        audioReady = true;
         await ensureAudioContext();
         applyVolume();
         const prayer = els.testAudioPrayer?.value || 'Asr';
@@ -1373,7 +1440,6 @@
     els.btnTestIqama?.addEventListener('click', async (ev) => {
       ev.preventDefault();
       try {
-        audioReady = true;
         await ensureAudioContext();
         applyVolume();
         const prayer = els.testAudioPrayer?.value || 'Asr';
@@ -1386,6 +1452,13 @@
       }
     });
     els.btnStopAudio?.addEventListener('click', () => stopAlarm(true));
+    els.btnPlayAlarm?.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const pending = blockedAlarm;
+      if (!pending) return;
+      playSound(pending.type, pending.prayerName);
+    });
     els.btnStopAlarm?.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
@@ -1453,6 +1526,7 @@
 
   function init() {
     applyVolume();
+    bindGlobalAudioUnlock();
     bindEvents();
     showEnableOverlayIfNeeded();
     syncSettingsForm();
@@ -1475,7 +1549,7 @@
       }
       // Re-register a network-first SW after a short delay (optional offline support)
       setTimeout(() => {
-        navigator.serviceWorker.register('sw.js?v=6').catch(() => {});
+        navigator.serviceWorker.register('sw.js?v=7').catch(() => {});
       }, 2500);
     }
   }

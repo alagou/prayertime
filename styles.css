@@ -816,6 +816,35 @@ body {
   background: #0a2e2a;
 }
 
+.btn-play-alarm {
+  appearance: none;
+  border: none;
+  margin-top: 1.5rem;
+  width: 100%;
+  max-width: 360px;
+  padding: 1.1rem 1.5rem;
+  border-radius: 16px;
+  font-family: var(--font-ui);
+  font-size: clamp(1.25rem, 3.5vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  color: #1a1206;
+  background: #e0b04a;
+  box-shadow: 0 8px 24px rgba(224, 176, 74, 0.45);
+  animation: play-pulse 1.2s ease-in-out infinite;
+}
+
+.btn-play-alarm + .btn-stop-alarm {
+  margin-top: 0.75rem;
+}
+
+@keyframes play-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
 .alarm-hint {
   margin: 0.85rem 0 0;
   font-size: 0.9rem;

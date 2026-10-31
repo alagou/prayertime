@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <title>Prayer & Iqama — Lusail</title>
-  <link rel="stylesheet" href="styles.css?v=10" />
+  <link rel="stylesheet" href="styles.css?v=11" />
 </head>
 <body>
   <!-- HTMLAudio — reliable on Android (Web Audio / speechSynthesis often silent) -->
@@ -29,6 +29,9 @@
       <h2 class="alarm-title" id="alarm-title">—</h2>
       <p class="alarm-prayer" id="alarm-prayer">—</p>
       <p class="alarm-detail" id="alarm-detail">—</p>
+      <button type="button" id="btn-play-alarm" class="btn-play-alarm" hidden>
+        Tap to Play Sound
+      </button>
       <button type="button" id="btn-stop-alarm" class="btn-stop-alarm">
         Stop Alarm
       </button>
@@ -42,14 +45,14 @@
       <p class="overlay-eyebrow">Prayer Display</p>
       <h1 class="overlay-title">Enable Prayer Alerts &amp; Sound</h1>
       <p class="overlay-text">
-        Tap once to allow Adhan audio and optional desktop notifications.
-        Your choice is remembered on this device.
+        Browsers only allow sound after a tap. Tap once each time this page is opened
+        or reloaded so the Adhan and Iqama alarms can play.
       </p>
       <button type="button" id="btn-enable-alerts" class="btn btn-primary">
         Enable Prayer Alerts &amp; Sound
       </button>
       <button type="button" id="btn-skip-alerts" class="btn btn-ghost">
-        Continue without sound
+        Not now
       </button>
     </div>
   </div>
@@ -249,7 +252,7 @@
 
   <div id="panel-backdrop" class="panel-backdrop" hidden></div>
 
-  <script src="prayer-data.js?v=10"></script>
-  <script src="script.js?v=10"></script>
+  <script src="prayer-data.js?v=11"></script>
+  <script src="script.js?v=11"></script>
 </body>
 </html>
