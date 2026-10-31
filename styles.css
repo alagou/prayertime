@@ -400,6 +400,51 @@ body {
   display: none !important;
 }
 
+/* Non-blocking bar used when sound is locked on an unattended display board */
+.overlay.is-compact {
+  inset: auto 0 0 0;
+  padding: 0.75rem;
+  background: none;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+
+.overlay.is-compact .overlay-card {
+  pointer-events: auto;
+  max-width: 760px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border: 2px solid #e0b04a;
+}
+
+.overlay.is-compact .overlay-copy {
+  flex: 1;
+}
+
+.overlay.is-compact .overlay-eyebrow,
+.overlay.is-compact .btn-ghost {
+  display: none;
+}
+
+.overlay.is-compact .overlay-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.overlay.is-compact .overlay-text {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+}
+
+.overlay.is-compact .btn-primary {
+  width: auto;
+  flex-shrink: 0;
+}
+
 .overlay-card {
   background: var(--surface-solid);
   border-radius: calc(var(--radius) + 4px);

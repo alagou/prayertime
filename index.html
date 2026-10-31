@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <title>Prayer & Iqama — Lusail</title>
-  <link rel="stylesheet" href="styles.css?v=11" />
+  <link rel="stylesheet" href="styles.css?v=12" />
 </head>
 <body>
   <!-- HTMLAudio — reliable on Android (Web Audio / speechSynthesis often silent) -->
@@ -42,12 +42,14 @@
   <!-- Enable alerts gate (browser autoplay / notifications require user gesture) -->
   <div id="enable-overlay" class="overlay" hidden>
     <div class="overlay-card">
-      <p class="overlay-eyebrow">Prayer Display</p>
-      <h1 class="overlay-title">Enable Prayer Alerts &amp; Sound</h1>
-      <p class="overlay-text">
-        Browsers only allow sound after a tap. Tap once each time this page is opened
-        or reloaded so the Adhan and Iqama alarms can play.
-      </p>
+      <div class="overlay-copy">
+        <p class="overlay-eyebrow">Prayer Display</p>
+        <h1 class="overlay-title" id="overlay-title">Enable Prayer Alerts &amp; Sound</h1>
+        <p class="overlay-text" id="overlay-text">
+          Browsers only allow sound after a tap. Tap once each time this page is opened
+          or reloaded so the Adhan and Iqama alarms can play.
+        </p>
+      </div>
       <button type="button" id="btn-enable-alerts" class="btn btn-primary">
         Enable Prayer Alerts &amp; Sound
       </button>
@@ -252,7 +254,7 @@
 
   <div id="panel-backdrop" class="panel-backdrop" hidden></div>
 
-  <script src="prayer-data.js?v=11"></script>
-  <script src="script.js?v=11"></script>
+  <script src="prayer-data.js?v=12"></script>
+  <script src="script.js?v=12"></script>
 </body>
 </html>

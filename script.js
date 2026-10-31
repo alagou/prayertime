@@ -53,6 +53,8 @@
     enableOverlay: $('enable-overlay'),
     btnEnable: $('btn-enable-alerts'),
     btnSkip: $('btn-skip-alerts'),
+    overlayTitle: $('overlay-title'),
+    overlayText: $('overlay-text'),
     btnSettings: $('btn-settings'),
     btnTestMode: $('btn-test-mode'),
     settingsPanel: $('settings-panel'),
@@ -385,7 +387,12 @@
 
   /** Keep the banner up and offer a tap-to-play button when the browser blocked sound. */
   function showSoundBlocked(type, prayerName) {
-    blockedAlarm = { type, prayerName };
+    const pending = { type, prayerName };
+    blockedAlarm = pending;
+    // Unattended boards: don't leave the prayer times covered indefinitely
+    setTimeout(() => {
+      if (blockedAlarm === pending) hideAlarmBanner();
+    }, 3 * 60_000);
     els.alarmDetail.textContent =
       'The browser blocked the sound because the screen has not been tapped since the page loaded. Tap “Play Sound”.';
     if (els.btnPlayAlarm) {
@@ -835,6 +842,7 @@
     }
     audioReady = true;
     localStorage.setItem(STORAGE.alertsEnabled, 'true');
+    if (els.enableOverlay.classList.contains('is-compact')) els.enableOverlay.hidden = true;
   }
 
   /**
@@ -1322,13 +1330,105 @@
     alertsUnlocked = true;
   }
 
-  /** Audio must be unlocked by a tap after every page load, so always ask. */
-  function showEnableOverlayIfNeeded() {
-    const flag = localStorage.getItem(STORAGE.alertsEnabled);
-    if (flag === 'true') {
-      els.btnEnable.textContent = 'Tap to Resume Sound & Alerts';
+  /** Tiny silent WAV, played unmuted to test whether this page may autoplay sound. */
+  function silentWavUrl() {
+    const samples = 800;
+    const buf = new ArrayBuffer(44 + samples);
+    const v = new DataView(buf);
+    const str = (offset, s) => [...s].forEach((c, i) => v.setUint8(offset + i, c.charCodeAt(0)));
+    str(0, 'RIFF');
+    v.setUint32(4, 36 + samples, true);
+    str(8, 'WAVE');
+    str(12, 'fmt ');
+    v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); // PCM
+    v.setUint16(22, 1, true); // mono
+    v.setUint32(24, 8000, true);
+    v.setUint32(28, 8000, true);
+    v.setUint16(32, 1, true);
+    v.setUint16(34, 8, true);
+    str(36, 'data');
+    v.setUint32(40, samples, true);
+    for (let i = 0; i < samples; i += 1) v.setUint8(44 + i, 128);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+
+  /**
+   * True when sound may play without a tap — e.g. installed home-screen app,
+   * kiosk browser with autoplay enabled, or a browser flag/policy allowing it.
+   */
+  async function canAutoplaySound() {
+    if (typeof navigator.getAutoplayPolicy === 'function') {
+      try {
+        return navigator.getAutoplayPolicy('mediaelement') === 'allowed';
+      } catch {
+        /* fall through to probe */
+      }
     }
+    const url = silentWavUrl();
+    const probe = new Audio(url);
+    try {
+      await Promise.race([
+        probe.play(),
+        delay(1500).then(() => {
+          throw new Error('timeout');
+        }),
+      ]);
+      probe.pause();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function showCompactSoundBar() {
+    els.enableOverlay.classList.add('is-compact');
+    els.overlayTitle.textContent = 'Sound is OFF on this board';
+    els.overlayText.textContent =
+      'This browser needs a tap after every restart. For sound with no touches, install the app to the home screen or use a kiosk browser (see README).';
+    els.btnEnable.textContent = 'Tap to Enable Sound';
     els.enableOverlay.hidden = false;
+  }
+
+  /**
+   * Skip the prompt entirely when the device already allows sound; otherwise ask,
+   * using a small non-blocking bar once the board has been set up before.
+   */
+  async function setupSound() {
+    if (await canAutoplaySound()) {
+      try {
+        await unlockAudio();
+      } catch (err) {
+        console.warn('Audio unlock failed:', err.message);
+      }
+      if (audioReady) {
+        els.enableOverlay.hidden = true;
+        showAudioStatus('Sound enabled automatically');
+        return;
+      }
+    }
+    if (localStorage.getItem(STORAGE.alertsEnabled) === 'true') {
+      showCompactSoundBar();
+    } else {
+      els.enableOverlay.hidden = false;
+    }
+  }
+
+  let wakeLock = null;
+
+  /** Keep a wall-mounted display awake while the page is visible. */
+  async function keepScreenOn() {
+    if (!('wakeLock' in navigator) || document.hidden || wakeLock) return;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => {
+        wakeLock = null;
+      });
+    } catch (err) {
+      console.warn('Wake lock unavailable:', err.message);
+    }
   }
 
   /** Any tap/key on the page counts as the gesture browsers require for audio. */
@@ -1489,7 +1589,10 @@
 
     // Wake / visibility — recalculate immediately
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) tick();
+      if (!document.hidden) {
+        tick();
+        keepScreenOn();
+      }
     });
     window.addEventListener('focus', tick);
     window.addEventListener('pageshow', tick);
@@ -1528,7 +1631,8 @@
     applyVolume();
     bindGlobalAudioUnlock();
     bindEvents();
-    showEnableOverlayIfNeeded();
+    setupSound();
+    keepScreenOn();
     syncSettingsForm();
     verifySeptember25();
 
