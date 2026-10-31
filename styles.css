@@ -384,6 +384,12 @@ body {
   margin: 0;
 }
 
+.footer .app-version {
+  margin-top: 0.35rem;
+  font-weight: 600;
+  color: rgba(232, 213, 163, 0.8);
+}
+
 /* —— Overlay —— */
 .overlay {
   position: fixed;

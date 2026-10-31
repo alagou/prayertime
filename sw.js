@@ -1,5 +1,5 @@
 /* Network-first service worker — avoid serving stale JS/CSS that break audio tests. */
-const CACHE = 'prayer-display-v7';
+const CACHE = 'prayer-display-v8';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

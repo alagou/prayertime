@@ -9,6 +9,10 @@
 (() => {
   'use strict';
 
+  /** Shown in the footer; bump on every release (together with the ?v= query in index.html). */
+  const APP_VERSION = '1.3.0';
+  const APP_BUILD_DATE = '2026-10-31';
+
   // —— Storage keys ——
   const STORAGE = {
     settings: 'prayerDisplay.settings.v1',
@@ -1628,6 +1632,9 @@
   // ============================================================
 
   function init() {
+    const versionEl = $('app-version');
+    if (versionEl) versionEl.textContent = `Version ${APP_VERSION} · ${APP_BUILD_DATE}`;
+    console.info(`Prayer Display v${APP_VERSION} (${APP_BUILD_DATE})`);
     applyVolume();
     bindGlobalAudioUnlock();
     bindEvents();
@@ -1653,7 +1660,7 @@
       }
       // Re-register a network-first SW after a short delay (optional offline support)
       setTimeout(() => {
-        navigator.serviceWorker.register('sw.js?v=7').catch(() => {});
+        navigator.serviceWorker.register('sw.js?v=8').catch(() => {});
       }, 2500);
     }
   }
