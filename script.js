@@ -10,8 +10,8 @@
   'use strict';
 
   /** Shown in the footer; bump on every release (together with the ?v= query in index.html). */
-  const APP_VERSION = '1.3.1';
-  const APP_BUILD_DATE = '2026-10-31';
+  const APP_VERSION = '1.4.0';
+  const APP_BUILD_DATE = '2026-11-25';
 
   // —— Storage keys ——
   const STORAGE = {
@@ -19,6 +19,9 @@
     alertsEnabled: 'prayerDisplay.alertsEnabled.v1',
     firedAlerts: 'prayerDisplay.firedAlerts.v1',
   };
+
+  /** Re-check the device clock against the web server every 30 minutes. */
+  const CLOCK_SYNC_INTERVAL_MS = 30 * 60_000;
 
   // —— Default settings ——
   const DEFAULT_SETTINGS = {
@@ -145,8 +148,10 @@
   /**
    * Parts of a Date in Asia/Qatar. Qatar has no DST (UTC+3 year-round).
    */
+  let qatarFormatter = null;
+
   function getQatarParts(date = new Date()) {
-    const fmt = new Intl.DateTimeFormat('en-GB', {
+    const fmt = qatarFormatter || (qatarFormatter = new Intl.DateTimeFormat('en-GB', {
       timeZone: TIMEZONE,
       weekday: 'long',
       year: 'numeric',
@@ -156,7 +161,7 @@
       minute: '2-digit',
       second: '2-digit',
       hour12: false,
-    });
+    }));
     const parts = Object.fromEntries(
       fmt.formatToParts(date).filter((p) => p.type !== 'literal').map((p) => [p.type, p.value])
     );
@@ -212,11 +217,53 @@
     return `${parts.day} ${months[parts.month - 1]} ${parts.year}`;
   }
 
-  /** Authoritative "now" — real clock or test simulation. */
+  /**
+   * Difference between the web server's clock and this device's clock (ms).
+   * Wall tablets often drift by minutes when they have no network time; the
+   * server's HTTP Date header is NTP-synced, so we trust it over the device.
+   */
+  let clockOffsetMs = 0;
+
+  function correctedNowMs() {
+    return Date.now() + clockOffsetMs;
+  }
+
+  /** Authoritative "now" — corrected real clock or test simulation. */
   function now() {
-    if (!testMode || !testMode.active) return new Date();
+    if (!testMode || !testMode.active) return new Date(correctedNowMs());
     const elapsed = Date.now() - testMode.baseRealMs;
     return new Date(testMode.simulatedMs + elapsed);
+  }
+
+  async function syncClockWithServer() {
+    if (location.protocol === 'file:') return;
+    try {
+      const t0 = Date.now();
+      const res = await fetch(`${location.pathname}?clock=${t0}`, {
+        method: 'HEAD',
+        cache: 'no-store',
+      });
+      const t1 = Date.now();
+      const header = res.headers.get('Date');
+      if (!header) return;
+      // The Date header has 1-second resolution (truncated) → add 500 ms
+      const serverMs = Date.parse(header) + 500;
+      if (!Number.isFinite(serverMs)) return;
+      const offset = serverMs - (t0 + (t1 - t0) / 2);
+      // Ignore sub-2s differences (within header precision); ignore absurd values
+      if (Math.abs(offset) < 2000) {
+        clockOffsetMs = 0;
+      } else if (Math.abs(offset) < 7 * 24 * 3600_000) {
+        clockOffsetMs = offset;
+        const secs = Math.round(offset / 1000);
+        console.warn(`Device clock is off by ${secs}s — using server time.`);
+        showAudioStatus(
+          `Tablet clock was ${Math.abs(secs)}s ${secs > 0 ? 'behind' : 'ahead'} — corrected automatically`
+        );
+      }
+    } catch (err) {
+      console.warn('Clock sync failed (offline?):', err.message);
+    }
   }
 
   // ============================================================
@@ -231,8 +278,24 @@
    * Build today's prayer schedule with Adhan/Iqama Date objects.
    * @returns {null | Array<{name, adhanStr, iqamaStr, adhanAt, iqamaAt, warningAt}>}
    */
+  /** Adhan times for a Qatar calendar date (calculated; cached per date). */
+  const timesCache = new Map();
+  function getAdhanTimes(year, month, day) {
+    const key = `${year}-${month}-${day}`;
+    if (!timesCache.has(key)) {
+      try {
+        timesCache.set(key, PrayerTimes.computePrayerTimes(year, month, day));
+      } catch (err) {
+        console.error('Prayer time calculation failed:', err);
+        return null;
+      }
+      if (timesCache.size > 10) timesCache.delete(timesCache.keys().next().value);
+    }
+    return timesCache.get(key);
+  }
+
   function buildSchedule(dateKey, year, month, day) {
-    const times = PRAYER_TIMETABLE[dateKey];
+    const times = getAdhanTimes(year, month, day);
     if (!times) return null;
 
     const intervals = getIntervals();
@@ -240,10 +303,13 @@
       const adhanStr = times[name];
       const iqamaStr = addMinutesToHHMM(adhanStr, intervals[name]);
       const a = parseHHMM(adhanStr);
-      const i = parseHHMM(iqamaStr);
       const adhanAt = qatarLocalToDate(year, month, day, a.hour, a.minute, 0);
-      const iqamaAt = qatarLocalToDate(year, month, day, i.hour, i.minute, 0);
-      const warningAt = new Date(iqamaAt.getTime() - 5 * 60 * 1000);
+      // Iqama = Adhan + interval as a real duration (safe across midnight)
+      const iqamaAt = new Date(adhanAt.getTime() + intervals[name] * 60_000);
+      // A "5 minutes left" warning only makes sense when the gap is longer than
+      // 5 minutes; otherwise it would fire at (or before) the Adhan and cut it off.
+      const warningAt =
+        intervals[name] > 5 ? new Date(iqamaAt.getTime() - 5 * 60 * 1000) : null;
       return { name, adhanStr, iqamaStr, adhanAt, iqamaAt, warningAt };
     });
   }
@@ -960,7 +1026,7 @@
   }
 
   function maybeTriggerIqamaWarning(dateKey, prayer, current) {
-    if (hasFired(dateKey, prayer.name, 'iqama5')) return;
+    if (!prayer.warningAt || hasFired(dateKey, prayer.name, 'iqama5')) return;
 
     const t = current.getTime();
     // Exactly at or after the 5-minute mark, but before Iqama
@@ -1155,7 +1221,7 @@
       case 'complete': {
         els.statusComplete.hidden = false;
         const tomorrow = nextDateKey(parts.year, parts.month, parts.day);
-        const tomorrowTimes = PRAYER_TIMETABLE[tomorrow.dateKey];
+        const tomorrowTimes = getAdhanTimes(tomorrow.year, tomorrow.month, tomorrow.day);
         if (tomorrowTimes) {
           els.tomorrowFajr.textContent = `Tomorrow's Fajr — ${tomorrowTimes.Fajr}`;
         } else {
@@ -1273,7 +1339,7 @@
     }
 
     const prayerName = els.testPrayer.value;
-    const current = new Date(); // use real date for which day's schedule
+    const current = new Date(correctedNowMs()); // real date decides which day's schedule
     const parts = getQatarParts(current);
     const schedule = buildSchedule(parts.dateKey, parts.year, parts.month, parts.day);
     if (!schedule) {
@@ -1603,28 +1669,17 @@
   }
 
   // ============================================================
-  // Self-check: 25 September 2026 Iqama math
+  // Self-check against the mosque wall clock (Al-Harameen) on 25 Nov 2026
   // ============================================================
 
-  function verifySeptember25() {
-    const key = '2026-09-25';
-    const schedule = buildSchedule(key, 2026, 9, 25);
+  function verifyReferenceDay() {
     const expected = {
-      Fajr: ['04:04', '04:29'],
-      Dhuhr: ['11:29', '11:49'],
-      Asr: ['14:53', '15:18'],
-      Maghrib: ['17:30', '17:40'],
-      Isha: ['19:00', '19:20'],
+      Fajr: '04:37', Dhuhr: '11:22', Asr: '14:23', Maghrib: '16:46', Isha: '18:16',
     };
-    const ok = schedule.every((p) => {
-      const [a, i] = expected[p.name];
-      return p.adhanStr === a && p.iqamaStr === i;
-    });
-    if (!ok) {
-      console.error('September 25 verification FAILED', schedule);
-    } else {
-      console.info('✓ 25 Sep 2026 Adhan→Iqama verified:', expected);
-    }
+    const got = PrayerTimes.computePrayerTimes(2026, 11, 25);
+    const ok = PRAYER_ORDER.every((p) => got[p] === expected[p]);
+    if (ok) console.info('✓ 25 Nov 2026 matches the mosque clock:', expected);
+    else console.error('Reference-day check FAILED', { expected, got });
   }
 
   // ============================================================
@@ -1641,7 +1696,9 @@
     setupSound();
     keepScreenOn();
     syncSettingsForm();
-    verifySeptember25();
+    verifyReferenceDay();
+    syncClockWithServer().then(tick);
+    setInterval(syncClockWithServer, CLOCK_SYNC_INTERVAL_MS);
 
     // High-frequency tick: compare real timestamps each second
     tick();
@@ -1660,7 +1717,7 @@
       }
       // Re-register a network-first SW after a short delay (optional offline support)
       setTimeout(() => {
-        navigator.serviceWorker.register('sw.js?v=8').catch(() => {});
+        navigator.serviceWorker.register('sw.js?v=9').catch(() => {});
       }, 2500);
     }
   }
