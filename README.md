@@ -2,20 +2,34 @@
 
 Full-screen Islamic prayer display for **Lusail, Qatar** (`Asia/Qatar`, UTC+3). Shows today’s schedule, plays the Adhan at prayer time, then counts down to Iqama with a 5-minute voice/notification warning.
 
-## Prayer data (API + cache)
+## Prayer times (calculated, every year)
 
-Times are loaded from `prayer-data.js` (365 days for 2026):
+Times are **calculated in the browser** for any date by `prayer-times.js`, using the
+official **Qatar Ministry of Awqaf / Qatar Calendar House** method for Doha and its
+suburbs (Lusail included):
 
-- **September 2026:** your provided timetable (authoritative)
-- **Other months:** [Aladhan API](https://api.aladhan.com) method 4 (Umm Al-Qura) for Lusail (25.4319°N, 51.4958°E)
+- Fajr: sun 18° below the horizon
+- Dhuhr: 1 minute after solar noon
+- Asr: standard (Shafi'i) shadow length
+- Maghrib: about 2 minutes after sunset (Qatar's precaution)
+- Isha: Maghrib + 90 minutes, all year (also in Ramadan)
 
-Refresh from the API:
+There is no yearly table to refresh, so the board keeps working in 2027 and later.
+
+Check the calculation:
 
 ```bash
-python tools/fetch-lusail-prayers.py
+node tools/verify-prayer-times.mjs
 ```
 
-Verification report (provided Sept vs API): [`prayer-cache/VERIFICATION.md`](prayer-cache/VERIFICATION.md)
+It must match the mosque clock exactly for 25 Nov 2026 and stay within 1 minute of the
+official Qatar Calendar House table on every day of 2026–2030. Details:
+[`prayer-cache/VERIFICATION.md`](prayer-cache/VERIFICATION.md).
+
+### Tablet clock
+
+The board checks its clock against the web server every 30 minutes. If the tablet's
+clock is wrong by 2 seconds or more, the board uses the server's time instead and shows a short note.
 
 ## Quick start
 
