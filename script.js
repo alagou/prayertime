@@ -10,8 +10,8 @@
   'use strict';
 
   /** Shown in the footer; bump on every release (together with the ?v= query in index.html). */
-  const APP_VERSION = '1.4.0';
-  const APP_BUILD_DATE = '2026-11-25';
+  const APP_VERSION = '1.4.1';
+  const APP_BUILD_DATE = '2026-11-26';
 
   // —— Storage keys ——
   const STORAGE = {
@@ -1669,16 +1669,16 @@
   }
 
   // ============================================================
-  // Self-check against the mosque wall clock (Al-Harameen) on 25 Nov 2026
+  // Self-check against the Ministry of Awqaf clock in a Lusail mosque (26 Nov 2026)
   // ============================================================
 
   function verifyReferenceDay() {
     const expected = {
-      Fajr: '04:37', Dhuhr: '11:22', Asr: '14:23', Maghrib: '16:46', Isha: '18:16',
+      Fajr: '04:37', Dhuhr: '11:22', Asr: '14:24', Maghrib: '16:45', Isha: '18:15',
     };
-    const got = PrayerTimes.computePrayerTimes(2026, 11, 25);
+    const got = PrayerTimes.computePrayerTimes(2026, 11, 26);
     const ok = PRAYER_ORDER.every((p) => got[p] === expected[p]);
-    if (ok) console.info('✓ 25 Nov 2026 matches the mosque clock:', expected);
+    if (ok) console.info('✓ 26 Nov 2026 matches the Awqaf mosque clock:', expected);
     else console.error('Reference-day check FAILED', { expected, got });
   }
 
@@ -1717,7 +1717,7 @@
       }
       // Re-register a network-first SW after a short delay (optional offline support)
       setTimeout(() => {
-        navigator.serviceWorker.register('sw.js?v=9').catch(() => {});
+        navigator.serviceWorker.register('sw.js?v=10').catch(() => {});
       }, 2500);
     }
   }

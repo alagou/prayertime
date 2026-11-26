@@ -1,69 +1,39 @@
-# Prayer-time accuracy: root cause and verification
+# Prayer-time accuracy
 
-## The problem (up to v1.3.1)
+## Source of truth (v1.4.1)
 
-The board showed times that were shifted from the mosque clock. On 25 Nov 2026:
+The app shows the **official Qatar Calendar House perpetual timetable** for Doha and
+its suburbs (Lusail included), with **Dhuhr and Asr called 1 minute later**, as the
+Ministry of Awqaf mosque clocks do. Isha is always Maghrib + 90 minutes.
 
-| Prayer  | Mosque clock (Al-Harameen HA-5115) | Old app | Difference |
-|---------|------------------------------------|---------|------------|
-| Fajr    | 04:37 | 04:36 | 1 min early |
-| Dhuhr   | 11:22 | 11:21 | 1 min early |
-| Asr     | 14:23 | 14:23 | same |
-| Maghrib | 16:46 | 16:43 | 3 min early |
-| Isha    | 18:16 | 18:13 | 3 min early |
+The timetable data is `qatar-calendar-house.csv`, from
+[osamaalassiry/TaqweemQatar](https://github.com/osamaalassiry/TaqweemQatar) (MIT). Each
+row is `day/month, Isha, Maghrib, Asr, Dhuhr, Sunrise, Fajr`. 29 February uses the
+28 February row.
 
-## Root cause
+## Official readings it matches exactly
 
-The times came from a fixed 2026 table downloaded from the Aladhan API with
-**method 4, Umm Al-Qura (Saudi Arabia)**. That is not the method used in Qatar:
+| Date | Source | Fajr | Dhuhr | Asr | Maghrib | Isha |
+|------|--------|------|-------|-----|---------|------|
+| 26 Nov 2026 | Ministry of Awqaf clock, Lusail mosque | 04:37 | 11:22 | 14:24 | 16:45 | 18:15 |
+| 21 Nov 2026 | Qatar Calendar House | 04:34 | 11:21 | 14:24 | 16:46 | 18:16 |
 
-1. **Fajr angle.** Umm Al-Qura uses 18.5°. Qatar uses 18°.
-2. **No Qatar precaution minutes (ihtiyat).** Qatar's official calendar calls Maghrib
-   about 2 minutes after the astronomical sunset and Dhuhr 1 minute after solar noon.
-   Umm Al-Qura uses the raw times. This is the 3-minute Maghrib/Isha shift.
-3. **Ramadan Isha.** Umm Al-Qura adds 120 minutes for Isha in Ramadan (a Saudi-only
-   rule). Qatar uses 90 minutes all year. In Ramadan 2026 (18 Feb – 19 Mar) the old
-   board called Isha **30 minutes late**.
-4. **Data ended on 31 Dec 2026.** On 1 Jan 2027 the board would show
-   "Prayer timetable is not available".
+`node tools/verify-prayer-times.mjs` checks both readings. It also checks that every day of
+2026–2030 equals the official timetable, with 0 mismatches.
 
-Across 2026 the old table matched the official Qatar Calendar House table on only
-10/365 days for Fajr and 27/365 days for Maghrib and Isha.
+## Why the old app was shifted (up to v1.3.1)
 
-## The fix (v1.4.0)
+The app used a 2026 table from the Aladhan API with **method 4, Umm Al-Qura
+(Saudi Arabia)**, not Qatar's timetable:
 
-`prayer-times.js` calculates the times for any date from the sun's position, using
-Qatar's rules (Doha reference point 25.2867° N, 51.5333° E, UTC+3):
+- Fajr used 18.5° instead of Qatar's 18°, so it was about 1 minute early.
+- It had no Qatar precaution minutes, so Dhuhr was about 1 minute early and Maghrib and Isha about 3 minutes early.
+- In Ramadan, Isha was set at Maghrib + 120 minutes (a Saudi rule), 30 minutes late for Qatar.
+- The data ended on 31 Dec 2026, so the board would have gone blank on 1 Jan 2027.
 
-| Prayer  | Rule |
-|---------|------|
-| Fajr    | Sun 18° below horizon, −1.0 min |
-| Dhuhr   | Solar noon +1.0 min |
-| Asr     | Shadow = 1× object + noon shadow, +0.35 min |
-| Maghrib | Sunset (0.833°) +2.15 min |
-| Isha    | Maghrib + 90 min |
+## About v1.4.0
 
-The precaution minutes were fitted to the official table and the mosque clock, not set
-by hand for any day. Each result is rounded to the nearest minute.
-
-## Verification (`node tools/verify-prayer-times.mjs`)
-
-**Mosque clock, 25 Nov 2026:** exact match for all five prayers.
-
-**Official Qatar Calendar House perpetual table** (`qatar-calendar-house.csv`, from
-[osamaalassiry/TaqweemQatar](https://github.com/osamaalassiry/TaqweemQatar), MIT),
-every day of 2026–2030:
-
-| Prayer  | Exact minute | Off by more than 1 minute |
-|---------|--------------|---------------------------|
-| Fajr    | 80.8% | 0 days |
-| Sunrise | 83.9% | 0 days |
-| Dhuhr   | 93.2% (vs table + 1 min) | 0 days |
-| Asr     | 67.8% | 0 days |
-| Maghrib | 73.2% | 0 days |
-| Isha    | 73.2% | 0 days |
-
-A perpetual table repeats every year, but the sun's times shift by up to about half a minute across
-the 4-year leap cycle. So a ±1 minute difference from the printed table is expected on some days.
-Today's Qatar Calendar House times for 21 Nov 2026 (Fajr 04:34, Sunrise 05:55,
-Dhuhr 11:21, Asr 14:24, Maghrib 16:46, Isha 18:16) are also reproduced exactly.
+v1.4.0 calculated the times from the sun's position. Its rules were tuned to an
+Al-Harameen wall clock, which turned out to be 1 minute off the official Awqaf clock
+for Asr, Maghrib and Isha. That calculator is now only a fallback, used if a date has no
+row in the timetable. It stays within 1 minute of the official times.

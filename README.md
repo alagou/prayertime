@@ -2,28 +2,25 @@
 
 Full-screen Islamic prayer display for **Lusail, Qatar** (`Asia/Qatar`, UTC+3). Shows today’s schedule, plays the Adhan at prayer time, then counts down to Iqama with a 5-minute voice/notification warning.
 
-## Prayer times (calculated, every year)
+## Prayer times (official Qatar timetable, every year)
 
-Times are **calculated in the browser** for any date by `prayer-times.js`, using the
-official **Qatar Ministry of Awqaf / Qatar Calendar House** method for Doha and its
-suburbs (Lusail included):
+The times come from Qatar's official **Qatar Calendar House perpetual timetable**
+(التقويم القطري) for Doha and its suburbs, which include Lusail. Dhuhr and Asr are
+called 1 minute later, as the Ministry of Awqaf mosque clocks do. Isha is always
+Maghrib + 90 minutes, including in Ramadan.
 
-- Fajr: sun 18° below the horizon
-- Dhuhr: 1 minute after solar noon
-- Asr: standard (Shafi'i) shadow length
-- Maghrib: about 2 minutes after sunset (Qatar's precaution)
-- Isha: Maghrib + 90 minutes, all year (also in Ramadan)
+The timetable has one row for each day of the year, so it works for every year with nothing to
+refresh. It is in `prayer-times.js`, and its source file is
+`prayer-cache/qatar-calendar-house.csv`.
 
-There is no yearly table to refresh, so the board keeps working in 2027 and later.
-
-Check the calculation:
+To check the times, run:
 
 ```bash
 node tools/verify-prayer-times.mjs
 ```
 
-It must match the mosque clock exactly for 25 Nov 2026 and stay within 1 minute of the
-official Qatar Calendar House table on every day of 2026–2030. Details:
+It checks that 26 Nov 2026 matches the Awqaf clock in a Lusail mosque exactly, and that
+every day of 2026–2030 matches the official timetable. Details:
 [`prayer-cache/VERIFICATION.md`](prayer-cache/VERIFICATION.md).
 
 ### Tablet clock
